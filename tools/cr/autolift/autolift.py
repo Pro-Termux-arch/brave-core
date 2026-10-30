@@ -716,6 +716,10 @@ def merge_conflicts(base: str, head: str = 'HEAD') -> list[str]:
             '--write-tree',
             '--name-only',
             '--no-messages',
+            # GitHub doesn't follow a file the base renamed, which a lift's
+            # whole milestone of changes makes likely, and shows the branch's
+            # change to the old path as a conflict.
+            '-Xno-renames',
             head,
             base,
         )
@@ -2408,8 +2412,9 @@ class ChannelBump:
             numbers = _CHANNEL_STEPS if index == 0 else _LOWER_CHANNEL_STEPS
             steps += [(number, channel.run) for number in numbers]
             if index == 0:
-                steps.append((8, None))
-        return steps + [(9, None), (10, None), (11, None)]
+                # The review. Step 8 is an autofix run's, for a channel bump.
+                steps.append((9, None))
+        return steps + [(10, None), (11, None), (12, None)]
 
     @classmethod
     def next_step(
@@ -2454,7 +2459,7 @@ class ChannelBump:
             return '\n'.join(lines)
         if reason := run_not_worth_it(report):
             lines.append(
-                'Next: the "Autofix run" section, carrying on from where the '
+                'Next: autofix.md, read in full, carrying on from where the '
                 'report leaves it; `prepare` found nothing worth a lift run '
                 f'({reason}).'
             )
@@ -2713,6 +2718,7 @@ def squashes_into_branch(subject: str) -> bool:
 # `ci-failures`' exit statuses, besides 0 when every check passed.
 CI_FAILED = 2
 CI_PENDING = 3
+CI_NO_PULL_REQUEST = 4
 
 # A failed test's name as CI reports it: TeamCity prefixes the binary
 # (`unit_tests: Suite.Test`), and parameterised tests carry an instantiation
@@ -3154,6 +3160,12 @@ class PullRequestFailures:
         written to `output`. The leads are read from the checkout, which must
         be on the run's branch."""
         run = self.run
+        if not ci_github.has_pull_request(run.branch):
+            return (
+                CI_NO_PULL_REQUEST,
+                f'- {run.branch} has no pull request yet: there is no CI to '
+                'read.',
+            )
         checks = ci_github.pr_checks(run.branch)
         found = ci_report.collect(checks)
         pending = checks.in_state(ci_github.State.PENDING)
@@ -3203,6 +3215,11 @@ def _cmd_advise(args: argparse.Namespace) -> int:
     return 0
 
 
+def _and_list(items: list[str]) -> str:
+    """`a`, `a and b`, `a, b and c`."""
+    return ' and '.join(filter(None, [', '.join(items[:-1]), items[-1]]))
+
+
 @dataclass(frozen=True)
 class Advice:
     """What a CI run does, decided mechanically before any agent starts, and
@@ -3218,63 +3235,59 @@ class Advice:
     action: str
     reasons: tuple[str, ...]
     prompt: str | None = None
+    # The skill's files the run must read in full, which the prompt names.
+    reads: tuple[str, ...] = ()
 
-    _SKILL = 'tools/cr/autolift/SKILL.md'
+    _SKILL_DIR = 'tools/cr/autolift'
     # The channels don't carry the tooling: a resumed channel bump reads the
     # copy its `prepare` or `autofix` made.
-    _STAGED_SKILL = '.autolift/tooling/cr/autolift/SKILL.md'
+    _STAGED_SKILL_DIR = '.autolift/tooling/cr/autolift'
 
     _UNATTENDED = (
         '\n\nThis is an unattended CI run: there is no human to ask, so make '
         'the calls the document describes and record them in the report.'
     )
 
-    # By (channel bump, kind of run).
+    # By (channel bump, kind of run), with the skill's files as `skill`,
+    # `autofix` and `bump`.
     _PROMPTS = {
         (False, 'lift'): (
             'Lift cr{target} by following {skill} from step 1 to the end. '
-            'Read the whole file before starting. The milestone N is {target}.'
+            'The milestone N is {target}.'
         ),
         (False, 'resume'): (
             'Resume the lift of cr{target}, which an earlier run of {skill} '
-            'stopped before it finished. Read the whole file, then follow its '
-            '"Resuming a run" section to carry on where that run stopped. The '
-            'milestone N is {target}.'
+            'stopped before it finished: follow its "Resuming a run" section '
+            'to carry on where that run stopped. The milestone N is {target}.'
         ),
         (False, 'autofix'): (
             "Fix what fails in the CI of cr{target}'s pull request by "
-            'following the "Autofix run" section of {skill}. Read the whole '
-            'file before starting. The milestone N is {target}.'
+            'following {autofix}. The milestone N is {target}.'
         ),
         (False, 'resume autofix'): (
-            'Resume the autofix run of cr{target}, which an earlier run of the '
-            '"Autofix run" section of {skill} stopped before it finished. Read '
-            'the whole file, then carry on where the report says that run '
-            'stopped. The milestone N is {target}.'
+            'Resume the autofix run of cr{target}, which an earlier run of '
+            '{autofix} stopped before it finished: carry on where the report '
+            'says that run stopped. The milestone N is {target}.'
         ),
         (True, 'lift'): (
             "Bump Brave's release channels to Chromium {target} by following "
-            'the "Channel bump run" section of {skill}. Read the whole file '
-            'before starting. The tag is {target}.'
+            '{bump}. The tag is {target}.'
         ),
         (True, 'resume'): (
             'Resume the channel bump to Chromium {target}, which an earlier '
-            'run of the "Channel bump run" section of {skill} stopped before '
-            'it finished. Read the whole file, then follow its "Resuming a '
-            'run" section to carry on where that run stopped. The tag is '
-            '{target}.'
+            'run of {bump} stopped before it finished: follow the "Resuming a '
+            'run" section of {skill} to carry on where that run stopped. The '
+            'tag is {target}.'
         ),
         (True, 'autofix'): (
             'Fix what fails in the CI of the pull requests of the channel bump '
-            'to Chromium {target} by following the "Autofix run" section of '
-            '{skill}, for each channel. Read the whole file before starting. '
-            'The tag is {target}.'
+            'to Chromium {target} by following the "Autofix run of a tag" part '
+            'of {bump}, for each channel. The tag is {target}.'
         ),
         (True, 'resume autofix'): (
             'Resume the autofix run of the channel bump to Chromium {target}, '
-            'which an earlier run of the "Autofix run" section of {skill} '
-            'stopped before it finished. Read the whole file, then carry on '
-            'where the report says that run stopped. The tag is {target}.'
+            'which an earlier run of {bump} stopped before it finished: carry '
+            'on where the report says that run stopped. The tag is {target}.'
         ),
     }
 
@@ -3298,13 +3311,29 @@ class Advice:
         cls, action: str, reasons: list[str], target: int | Version, kind: str
     ) -> Advice:
         bump = isinstance(target, Version)
-        skill = (
-            cls._STAGED_SKILL
+        root = (
+            cls._STAGED_SKILL_DIR
             if bump and kind.startswith('resume')
-            else cls._SKILL
+            else cls._SKILL_DIR
         )
-        prompt = cls._PROMPTS[(bump, kind)].format(target=target, skill=skill)
-        return cls(action, tuple(reasons), prompt + cls._UNATTENDED)
+        files = {
+            'skill': f'{root}/SKILL.md',
+            'autofix': f'{root}/autofix.md',
+            'bump': f'{root}/channel_bump.md',
+        }
+        reads = [files['skill']]
+        if bump:
+            reads.append(files['bump'])
+        # A lift of cr<N> fixes its pull request's CI as autofix.md says, at
+        # step 8.
+        if kind.endswith('autofix') or not bump:
+            reads.append(files['autofix'])
+        prompt = (
+            cls._PROMPTS[(bump, kind)].format(target=target, **files)
+            + f' Before starting, read {_and_list(reads)} yourself, each in '
+            'full with the Read tool.' + cls._UNATTENDED
+        )
+        return cls(action, tuple(reasons), prompt, tuple(reads))
 
     @classmethod
     def _of_cr(cls, milestone: int, autofix: bool) -> Advice | None:
@@ -3375,6 +3404,7 @@ class Advice:
         advice = {
             'action': self.action,
             'prompt': self.prompt,
+            'reads': list(self.reads),
             'reasons': list(self.reasons),
         }
         path.write_text(json.dumps(advice, indent=2) + '\n', encoding='utf-8')
@@ -3537,15 +3567,16 @@ STEPS = {
     5: 'Lit mangler snapshot',
     6: 'Android',
     7: 'Presubmit',
-    8: 'Code health review',
-    9: 'Update this document',
-    10: 'Wrap up',
-    11: 'Publish',
+    8: 'Pull request CI',
+    9: 'Code health review',
+    10: 'Update this document',
+    11: 'Wrap up',
+    12: 'Publish',
 }
 # A maintenance run without a lift (SKILL.md's "Maintenance run without a
 # lift"): step 2 is skipped, and so is everything only a lift needs.
-_NO_LIFT_STEPS = (1, 2, 3, 4, 10, 11)
-# A channel bump (SKILL.md's "Channel bump run"): the steps each channel's
+_NO_LIFT_STEPS = (1, 2, 3, 4, 11, 12)
+# A channel bump (channel_bump.md): the steps each channel's
 # branch takes, recorded on it. Only the highest channel is built, tested
 # and checked; the lower ones are lifted, and take its fixes. No Android
 # build: the pull requests' CI builds it, and autofix fixes what fails there.
@@ -3667,7 +3698,7 @@ def format_status(status: RunStatus) -> str:
         return '\n'.join(lines)
     if status.not_worth_it:
         lines.append(
-            'Next: the "Autofix run" section, carrying on from where the '
+            'Next: autofix.md, read in full, carrying on from where the '
             'report leaves it; `prepare` found nothing worth a lift run '
             f'({status.not_worth_it}).'
         )
@@ -3856,6 +3887,11 @@ def summarize_lift(log: str) -> LiftSummary:
     )
 
 
+def _brockit_kept_continuation() -> bool:
+    """Whether Brockit's `lift --continue` has a continuation to resume."""
+    return (repository.brave.root / '.version_upgrade').exists()
+
+
 def _package_range() -> str | None:
     """`<upstream tag>..<HEAD tag>` from `package.json`, if they differ."""
     old = Version.from_git('@{upstream}')
@@ -3958,6 +3994,14 @@ def _cmd_lift(args: argparse.Namespace) -> int:
             check=False,
         ).returncode
     summary = summarize_lift(log.read_bytes().decode('utf-8', errors='replace'))
+    # Brockit can stop on an error in `--continue` (a patch whose hunk count
+    # changed) without saying so, keeping its continuation for the rerun.
+    if (
+        not summary.resumable
+        and not summary.done
+        and _brockit_kept_continuation()
+    ):
+        summary = dataclasses.replace(summary, resumable=True)
     if summary.resumable:
         stopped.touch()
     else:
@@ -4568,7 +4612,7 @@ def main() -> int:
     step = subparsers.add_parser(
         'step', help='Record a finished or skipped step in the report.'
     )
-    step.add_argument('number', type=int, help='The step, 1 to 11.')
+    step.add_argument('number', type=int, help=f'The step, 1 to {len(STEPS)}.')
     outcome = step.add_mutually_exclusive_group(required=True)
     outcome.add_argument('--done', metavar='OUTCOME', help='What it found.')
     outcome.add_argument('--skipped', metavar='WHY', help='Why it was skipped.')

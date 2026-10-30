@@ -1007,6 +1007,7 @@ class PrepareFlowTest(unittest.TestCase):
                 '--write-tree',
                 '--name-only',
                 '--no-messages',
+                '-Xno-renames',
                 'HEAD',
                 'origin/cr157',
             ),
@@ -1148,6 +1149,16 @@ class PrepareFlowTest(unittest.TestCase):
             )
         )
         self.assertIn('unattended CI run', advice['prompt'])
+        # Step 8 fixes the pull request's CI as autofix.md says.
+        self.assertEqual(
+            advice['reads'],
+            ['tools/cr/autolift/SKILL.md', 'tools/cr/autolift/autofix.md'],
+        )
+        self.assertIn(
+            'read tools/cr/autolift/SKILL.md and tools/cr/autolift/autofix.md '
+            'yourself, each in full',
+            advice['prompt'],
+        )
         pr_checks.assert_not_called()
 
     def test_advise_a_rebase_without_a_lift(self):
@@ -1176,6 +1187,10 @@ class PrepareFlowTest(unittest.TestCase):
             )
         )
         self.assertIn('  - Failed: check 0', advice['reasons'])
+        self.assertEqual(
+            advice['reads'],
+            ['tools/cr/autolift/SKILL.md', 'tools/cr/autolift/autofix.md'],
+        )
 
     def test_advise_nothing_when_checks_are_only_pending(self):
         State = autolift.ci_github.State
@@ -1890,6 +1905,9 @@ class CiFailuresTest(unittest.TestCase):
         with (
             mock.patch.object(autolift.repository, 'brave', brave),
             mock.patch.object(
+                autolift.ci_github, 'has_pull_request', return_value=True
+            ),
+            mock.patch.object(
                 autolift.ci_github, 'pr_checks', return_value=checks
             ) as pr_checks,
             mock.patch.object(
@@ -1900,6 +1918,26 @@ class CiFailuresTest(unittest.TestCase):
             result = autolift._cmd_ci_failures(mock.Mock(target=159))
         pr_checks.assert_called_once_with('cr159')
         return result, stdout.getvalue()
+
+    def test_no_pull_request_yet(self):
+        stdout = io.StringIO()
+        with (
+            mock.patch.object(
+                autolift.repository,
+                'brave',
+                mock.MagicMock(root=self.run_root),
+            ),
+            mock.patch.object(
+                autolift.ci_github, 'has_pull_request', return_value=False
+            ) as has_pull_request,
+            mock.patch.object(ci_report, 'of') as report_of,
+            contextlib.redirect_stdout(stdout),
+        ):
+            result = autolift._cmd_ci_failures(mock.Mock(target=159))
+        has_pull_request.assert_called_once_with('cr159')
+        report_of.assert_not_called()
+        self.assertEqual(result, autolift.CI_NO_PULL_REQUEST)
+        self.assertIn('cr159 has no pull request yet', stdout.getvalue())
 
     def test_failed_checks(self):
         State = autolift.ci_github.State
@@ -2559,7 +2597,10 @@ class RunStepsTest(unittest.TestCase):
         self.assertEqual(4, autolift.next_step(steps, lift=False))
         steps.update({4: 'done'})
         self.assertEqual(5, autolift.next_step(steps, lift=True))
-        self.assertEqual(10, autolift.next_step(steps, lift=False))
+        self.assertEqual(11, autolift.next_step(steps, lift=False))
+        # A lift takes the pull request's CI after the presubmit.
+        steps.update({5: 'done', 6: 'done', 7: 'done'})
+        self.assertEqual(8, autolift.next_step(steps, lift=True))
         every = {n: 'done' for n in autolift.STEPS}
         self.assertIsNone(autolift.next_step(every, lift=True))
 
@@ -2602,6 +2643,39 @@ class NotWorthARunTest(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 autolift.merge_conflicts('origin/cr157')
 
+    def test_a_change_to_a_file_the_base_renamed_conflicts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+
+            def git(*args: str) -> str:
+                return subprocess.run(
+                    ['git', '-C', tmp, *args],
+                    check=True,
+                    env=_git_env(),
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+
+            git('init', '-q', '-b', 'master')
+            git('config', 'user.email', 'a@b.c')
+            git('config', 'user.name', 'A')
+            test = Path(tmp) / 'ai_chat_browsertests.cc'
+            test.write_text(''.join(f'line {n}\n' for n in range(20)))
+            git('add', '.')
+            git('commit', '-q', '-m', 'base')
+            git('checkout', '-q', '-b', 'cr159')
+            test.write_text(test.read_text().replace('line 3', 'line three'))
+            git('commit', '-q', '-am', 'branch')
+            git('checkout', '-q', 'master')
+            git('mv', test.name, 'ai_chat_browsertest.cc')
+            git('commit', '-q', '-m', 'rename')
+            brave = mock.MagicMock()
+            brave.run_git.side_effect = git
+            with mock.patch.object(autolift.repository, 'brave', brave):
+                self.assertEqual(
+                    autolift.merge_conflicts('master', 'cr159'),
+                    ['ai_chat_browsertests.cc'],
+                )
+
     def test_status_of_a_run_not_worth_a_lift(self):
         report = (
             '## prepare 158 (2026-11-01 12:00)\n\n'
@@ -2614,7 +2688,7 @@ class NotWorthARunTest(unittest.TestCase):
         text = autolift.format_status(_status(not_worth_it=reason))
         self.assertTrue(
             text.endswith(
-                'Next: the "Autofix run" section, carrying on from where the '
+                'Next: autofix.md, read in full, carrying on from where the '
                 'report leaves it; `prepare` found nothing worth a lift run '
                 '(no lift, and nothing to rebase).'
             )
@@ -2656,7 +2730,7 @@ class FormatStatusTest(unittest.TestCase):
             )
         )
         self.assertIn('- No lift needed', text)
-        self.assertTrue(text.endswith('Next: step 10, Wrap up.'))
+        self.assertTrue(text.endswith('Next: step 11, Wrap up.'))
 
 
 class StepCommandTest(unittest.TestCase):
@@ -2680,7 +2754,7 @@ class StepCommandTest(unittest.TestCase):
                 self.assertEqual(
                     1,
                     autolift._cmd_step(
-                        mock.Mock(number=12, done='x', skipped=None)
+                        mock.Mock(number=13, done='x', skipped=None)
                     ),
                 )
             report = (Path(tmp) / 'cr159' / 'report.md').read_text(
@@ -2707,6 +2781,7 @@ class LiftCommandTest(unittest.TestCase):
         directory: Path | None = None,
         package_range: str | None = None,
         asked_to_continue: bool | None = None,
+        kept_continuation: bool = False,
     ):
         """Runs `lift`, with Brockit printing `log_text`. A `--continue` run
         resumes a lift that asked to continue, unless `asked_to_continue`
@@ -2743,6 +2818,11 @@ class LiftCommandTest(unittest.TestCase):
             ) as run_mock,
             mock.patch.object(
                 autolift, '_package_range', return_value=package_range
+            ),
+            mock.patch.object(
+                autolift,
+                '_brockit_kept_continuation',
+                return_value=kept_continuation,
             ),
             mock.patch.object(
                 autolift.FixSources,
@@ -2812,6 +2892,34 @@ class LiftCommandTest(unittest.TestCase):
         )
         self.assertIn('has nothing to resume', section)
         result, run_mock, _ = self._lift(_CONTINUE_LOG, directory=directory)
+        self.assertEqual(result, 1)
+        run_mock.assert_not_called()
+
+    def test_a_stop_that_keeps_the_continuation_can_be_resumed(self):
+        log = (
+            '🔥🔥 The following modified patches have changes in the number '
+            'of hunks, and are expected to be submitted separately as fixes '
+            'with Chromium culprits:\n'
+        )
+        _, _, report = self._lift(
+            log, returncode=1, continue_=False, kept_continuation=True
+        )
+        self.assertIn(
+            'then run `autolift.py lift --continue`', self._last_section(report)
+        )
+        result, run_mock, _ = self._lift(
+            '💥 Done!\n', directory=report.parent.parent
+        )
+        self.assertEqual(result, 0)
+        run_mock.assert_called_once()
+
+    def test_a_finished_lift_is_not_resumed_from_a_stale_continuation(self):
+        _, _, report = self._lift(
+            '💥 Done!\n', continue_=False, kept_continuation=True
+        )
+        result, run_mock, _ = self._lift(
+            _CONTINUE_LOG, directory=report.parent.parent
+        )
         self.assertEqual(result, 1)
         run_mock.assert_not_called()
 
@@ -3120,6 +3228,31 @@ class FixListingTest(unittest.TestCase):
         )
 
 
+class SkillFilesTest(unittest.TestCase):
+    # An agent reads each file in one Read call, which stops at 25,000 tokens,
+    # some 100 KB of this text: keep each well within it.
+    _MAX_BYTES = 95_000
+
+    def test_every_file_a_run_reads_fits_one_read(self):
+        brave = Path(autolift.__file__).resolve().parents[3]
+        reads = {
+            path
+            for target in (158, autolift.Version('157.0.8103.38'))
+            for autofix in (False, True)
+            for path in autolift.Advice._told(
+                'lift', [], target, 'autofix' if autofix else 'lift'
+            ).reads
+        }
+        self.assertEqual(
+            {Path(path).name for path in reads},
+            {'SKILL.md', 'autofix.md', 'channel_bump.md'},
+        )
+        for path in reads:
+            with self.subTest(path=path):
+                size = (brave / path).stat().st_size
+                self.assertLessEqual(size, self._MAX_BYTES)
+
+
 class StageToolingTest(unittest.TestCase):
     def test_copies_the_tooling_once_and_runs_from_the_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3163,11 +3296,11 @@ class ChannelStepsTest(unittest.TestCase):
         # No Android build: the pull requests' CI has it.
         self.assertEqual(
             sequence[1:7],
-            [(n, 'master') for n in (2, 3, 4, 5, 7)] + [(8, None)],
+            [(n, 'master') for n in (2, 3, 4, 5, 7)] + [(9, None)],
         )
         # The lower channels are only lifted, taking the highest's fixes.
         self.assertEqual(sequence[7:9], [(2, '1.100.x'), (2, '1.99.x')])
-        self.assertEqual(sequence[9:], [(9, None), (10, None), (11, None)])
+        self.assertEqual(sequence[9:], [(10, None), (11, None), (12, None)])
 
     def test_steps_are_recorded_per_branch(self):
         report = (
@@ -3178,11 +3311,11 @@ class ChannelStepsTest(unittest.TestCase):
                 f'{_MASTER} (2026-11-03 11:00)\n\n'
                 for n in (2, 3, 4, 5, 7)
             )
-            + '## Step 8 done: Code health review (2026-11-03 12:00)\n\n'
+            + '## Step 9 done: Code health review (2026-11-03 12:00)\n\n'
             f'## Step 2 done: Lift on {_BETA} (2026-11-03 13:00)\n\n'
         )
         self.assertEqual(autolift.run_steps(report, _BETA), {2: 'done'})
-        self.assertEqual(autolift.run_steps(report), {1: 'done', 8: 'done'})
+        self.assertEqual(autolift.run_steps(report), {1: 'done', 9: 'done'})
         number, run = autolift.ChannelBump.next_step(self._CHANNELS, report)
         self.assertEqual((number, run.branch), (2, 'cr157.x-on-1.99.x'))
 
@@ -3394,6 +3527,10 @@ class ChannelBumpTest(unittest.TestCase):
                 f"Bump Brave's release channels to Chromium {_TAG} "
             )
         )
+        self.assertEqual(
+            advice.reads,
+            ('tools/cr/autolift/SKILL.md', 'tools/cr/autolift/channel_bump.md'),
+        )
         self.assertEqual(checked, [])
 
     def test_advise_a_rebase_of_a_bump_that_conflicts_with_its_channel(self):
@@ -3438,10 +3575,23 @@ class ChannelBumpTest(unittest.TestCase):
     def test_advise_a_resumed_bump_from_the_staged_skill(self):
         advice = autolift.Advice.of(_TAG, autofix=True, resume=True)
         self.assertEqual(advice.action, 'resume')
+        staged = '.autolift/tooling/cr/autolift'
         self.assertIn(
             'Resume the autofix run of the channel bump to Chromium '
-            f'{_TAG}, which an earlier run of the "Autofix run" section of '
-            '.autolift/tooling/cr/autolift/SKILL.md',
+            f'{_TAG}, which an earlier run of {staged}/channel_bump.md',
+            advice.prompt,
+        )
+        self.assertEqual(
+            advice.reads,
+            (
+                f'{staged}/SKILL.md',
+                f'{staged}/channel_bump.md',
+                f'{staged}/autofix.md',
+            ),
+        )
+        self.assertIn(
+            f'read {staged}/SKILL.md, {staged}/channel_bump.md and '
+            f'{staged}/autofix.md yourself, each in full',
             advice.prompt,
         )
 
