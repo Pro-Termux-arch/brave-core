@@ -70,6 +70,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 
 import _boot  # noqa: F401  -- adds tools/cr to sys.path
 from plaster import (  # noqa: E402  -- after _boot
@@ -681,7 +682,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('range', help='OLD..NEW Chromium tags.')
     parser.add_argument(
-        '--out', type=Path, help='Output directory; /tmp/codehealth_<NEW>.'
+        '--out',
+        type=Path,
+        help='Output directory; codehealth_<NEW> in the temp dir.',
     )
     parser.add_argument(
         '--sweep', action='append', help='Only this sweep (repeatable).'
@@ -690,7 +693,7 @@ def main() -> int:
     old, _, new = args.range.partition('..')
     if not old or not new:
         parser.error('expected OLD..NEW')
-    out = args.out or Path(f'/tmp/codehealth_{new}')
+    out = args.out or Path(tempfile.gettempdir()) / f'codehealth_{new}'
     out.mkdir(parents=True, exist_ok=True)
 
     dump = RangeDump(old, new, out)

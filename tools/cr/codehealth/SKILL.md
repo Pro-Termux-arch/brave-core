@@ -78,7 +78,7 @@ a new directory per range: reusing one mixes a stale `claimed` file into step 3,
 and leaves candidate lists of rules removed since.
 
 ```sh
-A=<old tag>; B=<new tag>; D=/tmp/codehealth_$B
+A=<old tag>; B=<new tag>; D="${TMPDIR:-/tmp}/codehealth_$B"
 vpython3 tools/cr/codehealth/scripts/sweep.py $A..$B --out $D
 ```
 
