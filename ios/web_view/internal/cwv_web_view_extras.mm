@@ -130,7 +130,7 @@ const CWVUserAgentType CWVUserAgentTypeDesktop =
 }
 
 - (void)createFullPagePDF:(void (^)(NSData* _Nullable))completionHandler {
-  self.webState->CreateFullPagePdf(base::BindOnce(completionHandler));
+  self.webState->CreatePdf({}, base::BindOnce(completionHandler));
 }
 
 - (CWVWebViewDownload*)downloadCurrentPageToPath:(NSString*)path
