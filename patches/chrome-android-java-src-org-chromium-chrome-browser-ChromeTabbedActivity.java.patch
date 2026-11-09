@@ -1,8 +1,8 @@
 diff --git a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
-index eb3e5785daad6ea265e0497a8c918af330c398c9..a954ffb9c7d09ae919bc3e8d03ecfc05e8926fb4 100644
+index 81101ad649d7e9358f763600fb3f4f4b6b1e9005..1e2128f4da3f9876923462cfdf70ca66a0eda48d 100644
 --- a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
 +++ b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
-@@ -985,6 +985,14 @@ public class ChromeTabbedActivity extends ChromeActivity implements PreAttachInt
+@@ -994,6 +994,14 @@ public class ChromeTabbedActivity extends ChromeActivity implements PreAttachInt
  
                          private void closeIfNoTabsAndHomepageEnabled(
                                  boolean isPendingClosure, boolean shouldRemoveWindowWithZeroTabs) {
@@ -17,7 +17,7 @@ index eb3e5785daad6ea265e0497a8c918af330c398c9..a954ffb9c7d09ae919bc3e8d03ecfc05
                              if (getTabModelSelector().getTotalTabCount() == 0) {
                                  if (shouldRemoveWindowWithZeroTabs) {
                                      mMultiInstanceManager.closeChromeWindowIfEmpty(mWindowId);
-@@ -4019,6 +4027,11 @@ public class ChromeTabbedActivity extends ChromeActivity implements PreAttachInt
+@@ -4048,6 +4056,11 @@ public class ChromeTabbedActivity extends ChromeActivity implements PreAttachInt
                  new TabModelSelectorObserver() {
                      @Override
                      public void onTabStateInitialized() {
@@ -29,3 +29,14 @@ index eb3e5785daad6ea265e0497a8c918af330c398c9..a954ffb9c7d09ae919bc3e8d03ecfc05
                          if (mMultiInstanceManager != null) {
                              mMultiInstanceManager.onTabStateInitialized();
                          }
+@@ -5587,6 +5600,10 @@ public class ChromeTabbedActivity extends ChromeActivity implements PreAttachInt
+     public void onSaveInstanceState(Bundle outState) {
+         try (TraceEvent e = TraceEvent.scoped("ChromeTabbedActivity.onSaveInstanceState")) {
+             super.onSaveInstanceState(outState);
++            if (areTabModelsInitialized()
++                    && mTabModelSelector.getModel(/* incognito= */ true).getCount() > 0) {
++                CipherLazyHolder.sCipherInstance.getCipher(javax.crypto.Cipher.ENCRYPT_MODE);
++            }
+             CipherLazyHolder.sCipherInstance.saveToBundle(outState);
+             saveToBaseBundle(outState);
+         }

@@ -30,3 +30,20 @@ substitutions:
         \1}
 
         \1private void \2_ChromiumImpl\3
+  - description: |-
+      Save a private tab cipher key whenever private tabs exist
+
+      The key is generated lazily by the first encryption (often a background
+      cookie save), so a private tab opened just before an activity recreation
+      (night mode, battery saver) leaves the saved state without one. The new
+      activity then ignores private files and the private tab, stashed for
+      reparenting, is never restored: it disappears and leaks its WebContents.
+    regex:
+      re_pattern: |-
+        ( +)(CipherLazyHolder\.sCipherInstance\.saveToBundle\(outState\);)
+      replace: |-
+        \1if (areTabModelsInitialized()
+        \1        && mTabModelSelector.getModel(/* incognito= */ true).getCount() > 0) {
+        \1    CipherLazyHolder.sCipherInstance.getCipher(javax.crypto.Cipher.ENCRYPT_MODE);
+        \1}
+        \1\2
