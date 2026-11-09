@@ -1,5 +1,5 @@
 diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
-index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f68151e02 100644
+index 63ee2d6b3d85413b0f5afca56ca3793f55f14313..3d1fe325c60ddea57d9fcb0ff31c5daeef036e30 100644
 --- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
 +++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
 @@ -185,6 +185,14 @@
@@ -129,7 +129,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        public: true,
        status: "stable",
      },
-@@ -3004,6 +3030,8 @@
+@@ -2991,6 +3017,8 @@
      },
      {
        name: "ExtensionScriptTagging",
@@ -138,7 +138,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        public: true,
        status: "stable",
        base_feature: "ExtensionScriptTagging",
-@@ -3137,7 +3165,9 @@
+@@ -3124,7 +3152,9 @@
      },
      {
        name: "FencedFrames",
@@ -149,7 +149,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        // This helps enable and expose the <fencedframe> element, but note that
        // blink::features::kFencedFrames must be enabled as well, as we require
        // the support of the browser process to fully enable the feature.
-@@ -3233,6 +3263,7 @@
+@@ -3220,6 +3250,7 @@
      {
        // In-development features for the File System Access API.
        name: "FileSystemAccessAPIExperimental",
@@ -157,7 +157,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        status: "experimental",
      },
      {
-@@ -3247,6 +3278,7 @@
+@@ -3234,6 +3265,7 @@
      {
        // Non-OPFS File System Access API.
        name: "FileSystemAccessLocal",
@@ -165,7 +165,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        status: {"default": "stable"},
      },
      {
-@@ -4141,7 +4173,8 @@
+@@ -4132,7 +4164,8 @@
          "Android": "stable",
          "default": "",
        },
@@ -175,7 +175,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        copied_from_base_feature_if: "overridden",
      },
      {
-@@ -5277,6 +5310,8 @@
+@@ -5273,6 +5306,8 @@
        //
        // It also has some feature params defined throughout the codebase.
        name: "Prerender2",
@@ -184,7 +184,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        status: "stable",
      },
      {
-@@ -5351,6 +5386,8 @@
+@@ -5347,6 +5382,8 @@
      },
      {
        name: "ProfilerAPI",
@@ -193,7 +193,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        status: "stable",
      },
      {
-@@ -5485,6 +5522,8 @@
+@@ -5483,6 +5520,8 @@
      // but we still keep this flag for future phase tests.
      {
        name: "ReduceUserAgentMinorVersion",
@@ -202,7 +202,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        status: "stable",
      },
      {
-@@ -7069,7 +7108,8 @@
+@@ -7067,7 +7106,8 @@
          "ChromeOS": "stable",
          "default": "",
        },
@@ -212,7 +212,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        copied_from_base_feature_if: "overridden",
      },
      {
-@@ -7257,6 +7297,8 @@
+@@ -7255,6 +7295,8 @@
      },
      {
        name: "UserMediaElement",
@@ -221,7 +221,7 @@ index b264ed711208d96a8382c8cc43c946af75c31a84..bb607f30ee37fb5f88c5e07711b79c2f
        status: "stable",
        public: true,
      },
-@@ -8183,5 +8225,10 @@
+@@ -8181,5 +8223,10 @@
        // crbug.com/435623334.
        name: "XSLTSpecialTrial",
      },
