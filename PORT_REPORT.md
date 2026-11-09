@@ -51,14 +51,17 @@ verified protection. No dummy API keys or official signing identity are supplied
 
 ## Containers, extensions, DeX
 
-See KIWI_INTEGRATION.md for concrete source comparisons and container security
+See docs/android-desktop/KIWI_INTEGRATION.md for concrete source comparisons and container security
 requirements. Chromium's fixed-partition SiteInstance API is a candidate, not an
 implemented container. Neither profile-keyed extension authorization nor UI tab
 labels establish a container boundary. No new browser feature has been integrated
 or compiled yet. No custom DeX UI has been implemented yet.
 
-Distinct proposed application identity: `io.github.protermuxarch.partitionbrowser`,
-display name `Partition Browser`. These are not configured or packaged yet.
+The custom build entry point requests application ID
+`io.github.protermuxarch.partitionbrowser`. Stable/default Android launcher
+resources now use `Partition Browser` / `Partition Browser - Development`.
+These changes have not been compiled or packaged yet. Other channel resources
+have not been rebranded; use only the supplied custom build entry point.
 
 ## Intended official build workflow
 
@@ -66,13 +69,23 @@ From src/brave with the project-compatible Node on PATH:
 
 ```sh
 pnpm run init --target_os=android --target_arch=arm64
-pnpm run build Release --target_os=android --target_arch=arm64 --target_android_output_format=apk
+python3 script/build_partition_android.py --jobs 2
 ```
 
-Commands above are the documented intended workflow, not executed-build evidence.
-Inspect the pinned build scripts before supplying memory, symbol, identity and
-target overrides. Use limited local parallelism, preserve intermediate outputs,
-and do not use start/install/test commands.
+Initialization was started; build is pending. The build helper uses upstream
+pnpm/GN/Ninja, Static configuration, no official-build identity, zero debug symbol
+levels, no secondary ABI, two local jobs, and an explicit custom manifest package.
+It monitors a 25 GiB free-space reserve and terminates only its own process group
+if reached, preserving intermediates. It does not change GPU/security flags.
+Use `--prepare-only` for GN preparation without compilation. Direct unmodified
+pnpm build commands do not supply the custom application ID and are not the
+delivery build configuration.
+
+`script/inspect_partition_apk.py` checks a built APK using explicit aapt and
+apksigner paths. It verifies the package ID, APK structure, native ELF AArch64
+headers and signature, then records metadata, SHA256 and tool output. It has not
+yet been run against an APK. Python syntax compilation and `git diff --check`
+were performed; these are not browser compilation or runtime tests.
 
 ## Current feature matrix
 
